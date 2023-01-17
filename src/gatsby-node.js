@@ -2,6 +2,7 @@ import puppeteer from 'puppeteer';
 import express from "express";
 import fs from 'fs-extra';
 import path from 'path';
+const sleep = require('util').promisify(setTimeout);
 
 const DEV_PAGE = '/dev-404-page/';
 const fileRegexp = RegExp('.*.(html|htm)');
@@ -41,8 +42,11 @@ const generatePdf = async ({
 	filePrefix,
 	pdfOptions = {},
 	styleTagOptions,
+	index,
 }) => {
 	await runWithWebServer(async base => {
+		const delay = 1000 * index;
+		await sleep(delay);
 		const currentDir = process.cwd();
 		const device_width = 1920;
 		const device_height = 1080;
@@ -86,7 +90,7 @@ exports.onPostBuild = async (options, { allPages = false, paths = [], ...restPro
 		.filter((path) => path !== undefined && path !== DEV_PAGE && !fileRegexp.test(path));
 
 	if (allPages) {
-		const promisses = pageNodes.map((pagePath) => generatePdf({ pagePath, ...restProps }));
+		const promisses = pageNodes.map((pagePath, index) => generatePdf({ pagePath, ...restProps }));
 		await Promise.all(promisses);
 	} else {
 		const promisses = paths.map((pagePath) => {

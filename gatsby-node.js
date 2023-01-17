@@ -8,6 +8,8 @@ var _fsExtra = _interopRequireDefault(require("fs-extra"));
 
 var _path = _interopRequireDefault(require("path"));
 
+var sleep = require('util').promisify(setTimeout);
+
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 const DEV_PAGE = '/dev-404-page/';
@@ -42,9 +44,12 @@ const generatePdf = async ({
   outputPath = 'public/exports',
   filePrefix,
   pdfOptions = {},
-  styleTagOptions
+  styleTagOptions,
+  index
 }) => {
   await runWithWebServer(async base => {
+    const delay = 1000 * index;
+		await sleep(delay);
     const device_width = 1920;
   const device_height = 1080;
   const currentDir = process.cwd();
@@ -92,7 +97,7 @@ exports.onPostBuild = async (options, {
   }) => path).filter(path => path !== undefined && path !== DEV_PAGE && !fileRegexp.test(path));
 
   if (allPages) {
-    const promisses = pageNodes.map(pagePath => generatePdf({
+    const promisses = pageNodes.map((pagePath, index) => generatePdf({
       pagePath,
       ...restProps
     }));
