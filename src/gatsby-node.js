@@ -1,4 +1,5 @@
 import puppeteer from 'puppeteer';
+import express from "express";
 import fs from 'fs-extra';
 import path from 'path';
 
@@ -16,6 +17,24 @@ const normalizePageName = (pagePath = '') => {
 	return pageName;
 };
 
+async function runWithWebServer(body) {
+	return new Promise((resolve, reject) => {
+		const app = express();
+		app.use(express.static(path.join(process.cwd(), 'public')))
+
+		const server = app.listen(0, async () => {
+			try {
+				await body("http://localhost:" + server.address().port)
+				server.close()
+				resolve()
+			} catch (err) {
+				server.close()
+				reject(err)
+			}
+		});
+	})
+}
+
 const generatePdf = async ({
 	pagePath,
 	outputPath = 'public/exports',
@@ -23,33 +42,41 @@ const generatePdf = async ({
 	pdfOptions = {},
 	styleTagOptions,
 }) => {
-	const currentDir = process.cwd();
-	const browser = await puppeteer.launch({ headless: true });
-	const page = await browser.newPage();
-	const htmlPath = path.join(currentDir, 'public', pagePath, 'index.html');
-	const downloadDir = path.join(currentDir, outputPath);
+	await runWithWebServer(async base => {
+		const currentDir = process.cwd();
+		const device_width = 1920;
+		const device_height = 1080;
+		const browser = await puppeteer.launch({ headless: true, ignoreHTTPSErrors: true, executablePath: '/usr/bin/chromium', args: [
+			'--no-sandbox',
+			'--disable-dev-shm-usage',
+			'--allow-file-access-from-files', '--enable-local-file-accesses', '--start-maximized'
+			],});
+		const page = await browser.newPage();
+		await page.setViewport({width: device_width, height: device_height,  isMobile: false})
+		await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36');
+		await page.emulateMediaType('screen');
+		const downloadDir = path.join(currentDir, outputPath);
 
-	if (!fs.existsSync(downloadDir)) {
-		fs.mkdirSync(downloadDir);
-	}
+		if (!fs.existsSync(downloadDir)) {
+			fs.mkdirSync(downloadDir);
+		}
 
-	const contentHtml = fs.readFileSync(htmlPath, 'utf8');
-	await page.setContent(contentHtml);
+		await page.goto(base + pagePath, { waitUntil: 'networkidle0' });
 
-	if (styleTagOptions) {
-		await page.addStyleTag(styleTagOptions);
-	}
+		if (styleTagOptions) {
+			await page.addStyleTag(styleTagOptions);
+		}
 
-	await page.pdf({
-		format: 'A4',
-		path: path.join(
-			downloadDir,
-			`${filePrefix ? filePrefix : ''}${normalizePageName(pagePath)}.pdf`
-		),
-		...pdfOptions,
+		await page.pdf({
+			path: path.join(
+				downloadDir,
+				`${filePrefix ? filePrefix : ''}${normalizePageName(pagePath)}.pdf`
+			),
+			...pdfOptions,
+		});
+
+		await browser.close();
 	});
-
-	await browser.close();
 };
 
 exports.onPostBuild = async (options, { allPages = false, paths = [], ...restProps }) => {
